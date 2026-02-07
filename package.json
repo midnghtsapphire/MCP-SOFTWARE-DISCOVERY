@@ -1,14 +1,92 @@
 {
   "name": "mct-software-discovery",
   "version": "1.0.0",
-  "description": "MCT module for SOFTWARE-DISCOVERY",
-  "main": "dist/index.js",
+  "description": "MCT Server Module for Software Discovery",
+  "main": "src/index.ts",
   "scripts": {
+    "start": "ts-node src/index.ts",
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "test": "jest",
-    "setup": "npm install && npx drizzle-kit push:pg"
+    "docker": "docker build -t mct-software-discovery ."
   },
-  "keywords": ["mct", "api", "microservice"],
-  "license": "MIT"
+  "dependencies": {
+    "express": "^4.17.1",
+    "mongoose": "^5.10.9",
+    "ts-node": "^9.0.0",
+    "typescript": "^4.0.3",
+    "body-parser": "^1.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.7",
+    "@types/mongoose": "^5.7.36",
+    "@types/node": "^14.11.2"
+  }
+}
+### `src/index.ts`
+import express from 'express';
+import bodyParser from 'body-parser';
+import { router as softwareRoutes } from './api/routes';
+import { connectDatabase } from './db/schema';
+import { startMctServer } from './mct/server';
+const app = express();
+const PORT = process.env.PORT || 3000;
+app.use(bodyParser.json());
+app.use('/api', softwareRoutes);
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await connectDatabase();
+  startMctServer();
+});
+### `src/api/routes.ts`
+import { Router } from 'express';
+import { getAllSoftware, addSoftware } from '../services/softwareService';
+export const router = Router();
+router.get('/software', async (req, res) => {
+  const software = await getAllSoftware();
+  res.json(software);
+});
+router.post('/software', async (req, res) => {
+  const { name, version } = req.body;
+  const software = await addSoftware(name, version);
+  res.status(201).json(software);
+});
+### `src/db/schema.ts`
+import mongoose from 'mongoose';
+const softwareSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  version: { type: String, required: true }
+});
+export const Software = mongoose.model('Software', softwareSchema);
+export async function connectDatabase() {
+  await mongoose.connect('mongodb://localhost:27017/softwareDB', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  });
+  console.log('Database connected');
+}
+### `src/mct/server.ts`
+import { ToolRegistry } from './tools';
+export function startMctServer() {
+  console.log('Starting MCT Server');
+  ToolRegistry.init();
+}
+### `src/mct/tools.ts`
+import { getAllSoftware } from '../services/softwareService';
+export class ToolRegistry {
+  static init() {
+    console.log('Registering MCT Tools');
+    // Example: register a tool for listing all software
+    MCT.registerTool('list-software', async () => {
+      return await getAllSoftware();
+    });
+  }
+}
+### `src/services/softwareService.ts`
+import { Software } from '../db/schema';
+export async function getAllSoftware() {
+  return Software.find();
+}
+export async function addSoftware(name: string, version: string) {
+  const software = new Software({ name, version });
+  await software.save();
+  return software;
 }
